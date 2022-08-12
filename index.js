@@ -4,19 +4,17 @@ const jwt = require('jsonwebtoken');
 const app = express()
 require('dotenv').config();
 const port = process.env.PORT || 5000;
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // middleware 
 app.use(cors());
 app.use(express.json());
 
 
-
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.fmzb0gw.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
-
 
 
 function verifyJWT(req, res, next) {
@@ -53,7 +51,35 @@ const verifyAdmin = async(req, res, next) => {
   else{
     return res.status(403).send({ message: 'Forbidden' })
   }
-}
+};
+
+
+app.post('/create-payment-intent', verifyJWT, async(req, res) => {
+  const service = req.body;
+  const price = service.price;
+  const amount = price*100;
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: amount,
+    currency: 'usd',
+    payment_method_types:['card']
+  });
+  console.log('This is Payment', paymentIntent)
+  res.send({clientSecret: paymentIntent.client_secret}) 
+})
+
+
+// app.post('/create-payment-intent', verifyJWT, async(req, res) =>{
+//   const service = req.body;
+//   const price = service.price;
+//   const amount = price*100;
+//   console.log('this is stripr', stripe)
+//   const paymentIntent = await stripe.paymentIntents.create({
+//     amount : amount,
+//     currency: 'usd',
+//     payment_method_types:['card']
+//   });
+//   res.send({clientSecret: paymentIntent.client_secret})
+// });
 
 
     app.get('/service', async (req, res) => {
@@ -157,6 +183,14 @@ app.get('/admin/:email', async(req, res) => {
         return req.status(403).send({message: 'Forbidden access'})
       }
     });
+
+
+    app.get('/booking/:id', verifyJWT, async(req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id)};
+      const booking = await bookingCollection.findOne(query);
+      res.send(booking)
+    })
 
     app.get('/doctor', verifyJWT, verifyAdmin, async(req, res) => {
       const doctors = await doctorCollection.find().toArray();
